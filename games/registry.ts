@@ -8,6 +8,11 @@ import { sequenceShowdownDefinition } from "@/games/sequence-showdown";
 import { mazeRaceDefinition } from "@/games/maze-race";
 import { heartPongDefinition } from "@/games/heart-pong";
 import { posePerfectDefinition } from "@/games/pose-perfect";
+import { freezeDefinition } from "@/games/freeze";
+import { balanceBattleDefinition } from "@/games/balance-battle";
+import { handSignSprintDefinition } from "@/games/hand-sign-sprint";
+import { mirrorMeDefinition } from "@/games/mirror-me";
+import { moveSyncDefinition } from "@/games/move-sync";
 
 /**
  * Central game registry. Adding a game = implement GameDefinition in
@@ -22,6 +27,11 @@ const GAMES: GameDefinition[] = [
   mazeRaceDefinition,
   heartPongDefinition,
   posePerfectDefinition,
+  freezeDefinition,
+  balanceBattleDefinition,
+  handSignSprintDefinition,
+  mirrorMeDefinition,
+  moveSyncDefinition,
 ];
 
 export function getGame(id: string): GameDefinition | null {

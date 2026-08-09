@@ -11,9 +11,13 @@ Landing → Create/Join room → Lobby → Ready up → synchronized minigames
 → Round results → Match results (best of 3) → Rematch
 ```
 
-**Six arcade games** are live: ⚡ Quickdraw, 🧠 Memory Blitz, 🎨 Color Clash,
-🟣 Sequence Showdown, 🌀 Maze Race, and 💗 Heart Pong (host-authoritative
-realtime pong), plus the first **camera game**, 🤸 Pose Perfect.
+**Twelve games** are live — six arcade, six camera-based.
+
+*Arcade:* ⚡ Quickdraw · 🧠 Memory Blitz · 🎨 Color Clash · 🟣 Sequence Showdown
+· 🌀 Maze Race · 💗 Heart Pong (host-authoritative realtime pong)
+
+*Camera:* 🤸 Pose Perfect · 🧊 Freeze! · 🦩 Balance Battle · ✌️ Hand Sign Sprint
+· 🪞 Mirror Me · 🕺 Move Sync
 
 ### Devices without a camera
 
@@ -30,7 +34,7 @@ syncs to both players:
 | Mode | Length | Behavior |
 |---|---|---|
 | Quick Match | Best of 3 | Random games each round |
-| Date Night | Best of 7 | Balances arcade/physical categories (falls back to arcade until camera games ship) |
+| Date Night | Best of 7 | Alternates arcade and camera games (arcade only when either player has no camera) |
 | Chaos Mode | Best of 9 | Rounds can carry a modifier — see below |
 | Custom | Best of 1–7 | Host picks the length and which games are in the pool |
 
@@ -271,12 +275,21 @@ over WebRTC.
 
 ## Roadmap
 
-Phase 4 (vision foundation) is **done**. Phase 5 is **in progress** — Pose
-Perfect is playable; Freeze, Balance Battle, Hand Sign Sprint, Mirror Me and
-Move Sync are next. Then Phase 6: WebRTC video call → Phase 7: stakes,
-cosmetics, richer stats and dynamic titles.
+Phases 4 and 5 are **done** — the vision foundation and all six camera games.
+Next: Phase 6 (WebRTC video call), then Phase 7 (stakes, cosmetics, richer
+stats and dynamic titles).
 
-The camera games' detection heuristics have been validated against synthetic
-landmark data, but **not yet tuned against a real body on a real webcam** —
-expect the similarity and movement thresholds to need a pass once someone
-plays them for real. `/dev/vision` exists for exactly that.
+⚠️ The camera games' detection heuristics are validated against synthetic
+landmark data and run end-to-end in a browser, but they have **not been tuned
+against a real body on a real webcam**. Expect the pose-similarity bands and
+the balance/freeze feel to need a pass once someone plays them for real —
+`/dev/vision` exists for exactly that.
+
+### Mirror Me's networking
+
+Mirror Me is the only game that streams pose data between players. The leader
+broadcasts nine **joint angles** (not landmarks, and never frames) roughly
+eight times a second; the mirror flips them left-to-right and scores itself
+continuously. Nine rounded numbers per message keeps it comfortably inside
+Realtime's budget, and the payload is validated before use like every other
+event.
