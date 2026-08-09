@@ -170,6 +170,10 @@ export function useMatch(session: RoomSession, mode: MatchMode = "quick"): Match
           if (event.forPlayerId !== me?.id) return;
           const hydrated = hydrateFromSnapshot(event.snapshot.match);
           if (!hydrated) return;
+          // An unconfigured lobby snapshot has nothing worth restoring —
+          // and applying one can clobber ready-up state that raced past it
+          // (the room creator always "rejoins" her own fresh room).
+          if (hydrated.phase === "lobby" && !hydrated.config) return;
           dispatch({ type: "HYDRATE", state: hydrated });
           const snapReady = event.snapshot.ready as Partial<ReadyFlags> | undefined;
           if (snapReady) {
