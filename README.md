@@ -1,6 +1,6 @@
-# DuoArcade ♥
+# DuoArcade
 
-A private online arcade for two. Long-distance couples join the same room with a
+A private online arcade for two. Join the same room with a
 6-character code, ready up, and compete in short synchronized minigames —
 crowns for the winner, shared Couple XP for both.
 
