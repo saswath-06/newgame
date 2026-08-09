@@ -11,6 +11,14 @@ export interface MatchConfig {
   seed: number;
   /** Game id per round, length = 2 * targetWins - 1. */
   games: string[];
+  /** Modifier ids per round (Chaos mode); empty arrays when none. */
+  roundModifiers?: string[][];
+}
+
+/** Host-chosen settings for Custom mode, synced pre-match. */
+export interface CustomSettings {
+  targetWins: number;
+  gameIds: string[];
 }
 
 export type MatchPhase =

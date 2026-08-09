@@ -13,6 +13,14 @@ test.describe("two-player match flow", () => {
     const alice = await ctxA.newPage();
     const bob = await ctxB.newPage();
 
+    // Pin match selection to Quickdraw so the driver below stays valid
+    // (only the host's storage matters, but set both for symmetry).
+    for (const page of [alice, bob]) {
+      await page.addInitScript(() => {
+        window.sessionStorage.setItem("duoarcade:forceGames", "quickdraw");
+      });
+    }
+
     // Alice creates a room.
     await alice.goto("/");
     await alice.getByLabel("Your name").fill("Alice");
@@ -52,6 +60,46 @@ test.describe("two-player match flow", () => {
     await bob.getByRole("button", { name: "Rematch" }).click();
     await expect(alice.getByText("Round 1 of 3")).toBeVisible({ timeout: 30000 });
     await expect(bob.getByText("Round 1 of 3")).toBeVisible({ timeout: 30000 });
+
+    await ctxA.close();
+    await ctxB.close();
+  });
+
+  test("a non-quickdraw game mounts, runs, and resolves a round", async ({ browser }) => {
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const alice = await ctxA.newPage();
+    const bob = await ctxB.newPage();
+    for (const page of [alice, bob]) {
+      await page.addInitScript(() => {
+        window.sessionStorage.setItem("duoarcade:forceGames", "color-clash");
+      });
+    }
+
+    await alice.goto("/");
+    await alice.getByLabel("Your name").fill("Ana");
+    await alice.getByRole("button", { name: "Create a room" }).click();
+    await alice.waitForURL(/\/room\/[A-Z2-9]{6}/, { timeout: 20000 });
+    const code = alice.url().split("/room/")[1].slice(0, 6);
+
+    await bob.goto(`/room/${code}`);
+    await bob.getByLabel("Your name").fill("Ben");
+    await bob.getByRole("button", { name: "Enter room" }).click();
+    await expect(alice.getByText("Ben").first()).toBeVisible({ timeout: 20000 });
+
+    await alice.getByRole("button", { name: "Ready up" }).click();
+    await bob.getByRole("button", { name: "Ready up" }).click();
+
+    // Color Clash mounts on both clients.
+    await expect(alice.getByText("Color Clash").first()).toBeVisible({ timeout: 30000 });
+    await expect(bob.getByText("Tap the ink color", { exact: false })).toBeVisible({
+      timeout: 30000,
+    });
+
+    // With no input every prompt times out (~57s), both submit results,
+    // and the round resolves as a tie — proving the full result pipeline.
+    await expect(alice.getByText("IT'S A TIE")).toBeVisible({ timeout: 90000 });
+    await expect(bob.getByText("IT'S A TIE")).toBeVisible({ timeout: 15000 });
 
     await ctxA.close();
     await ctxB.close();

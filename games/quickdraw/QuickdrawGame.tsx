@@ -50,12 +50,16 @@ export function QuickdrawGame({
   partnerName,
   startAt,
   now,
+  modifiers,
   sendGameEvent,
   onGameEvent,
   onFinish,
   partnerResult,
 }: GameProps) {
   const config = useMemo(() => createQuickdrawConfig(seed), [seed]);
+  // Hyper Speed modifier: a much less forgiving click window. Both
+  // clients share the modifier list, so schedules stay in lockstep.
+  const windowMs = modifiers.includes("faster_timer") ? 1100 : REACTION_TIMEOUT_MS;
 
   const slots = useMemo<Slot[]>(() => {
     const list: Slot[] = [];
@@ -64,13 +68,13 @@ export function QuickdrawGame({
       const readyAt = t;
       const waitAt = readyAt + GET_READY_MS;
       const goAt = waitAt + delay;
-      const resultAt = goAt + REACTION_TIMEOUT_MS;
+      const resultAt = goAt + windowMs;
       const endAt = resultAt + RESULT_MS;
       list.push({ readyAt, waitAt, goAt, resultAt, endAt });
       t = endAt;
     }
     return list;
-  }, [config, startAt]);
+  }, [config, startAt, windowMs]);
 
   const zoneRef = useRef<HTMLDivElement>(null);
   const mineRef = useRef<(Reaction | null)[]>(Array(MAX_SUBROUNDS).fill(null));

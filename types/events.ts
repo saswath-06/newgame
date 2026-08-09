@@ -1,6 +1,8 @@
-import type { MatchConfig } from "./match";
+import type { CustomSettings, MatchConfig, MatchMode } from "./match";
 import type { PlayerResult } from "./game";
 import type { PlayerRole } from "./player";
+
+const MATCH_MODES: readonly MatchMode[] = ["quick", "date_night", "chaos", "custom"];
 
 /**
  * Every message broadcast on a room channel. Discriminated on `type` so
@@ -10,6 +12,7 @@ import type { PlayerRole } from "./player";
 export type RoomEvent =
   | { type: "PLAYER_JOINED"; playerId: string; name: string; role: PlayerRole }
   | { type: "PLAYER_READY"; playerId: string; ready: boolean }
+  | { type: "MODE_SELECTED"; mode: MatchMode; custom?: CustomSettings }
   | { type: "MATCH_CONFIGURED"; config: MatchConfig }
   | { type: "COUNTDOWN_STARTED"; startAt: number; round: number }
   | {
@@ -67,7 +70,21 @@ function isMatchConfig(v: unknown): v is MatchConfig {
     isNum(v.seed) &&
     Array.isArray(v.games) &&
     v.games.length > 0 &&
-    v.games.every(isStr)
+    v.games.every(isStr) &&
+    (v.roundModifiers === undefined ||
+      (Array.isArray(v.roundModifiers) &&
+        v.roundModifiers.every((r) => Array.isArray(r) && r.every(isStr))))
+  );
+}
+
+function isCustomSettings(v: unknown): v is CustomSettings {
+  return (
+    isObj(v) &&
+    isNum(v.targetWins) &&
+    v.targetWins >= 1 &&
+    v.targetWins <= 5 &&
+    Array.isArray(v.gameIds) &&
+    v.gameIds.every(isStr)
   );
 }
 
@@ -88,6 +105,15 @@ export function parseRoomEvent(raw: unknown): RoomEvent | null {
       return isStr(raw.playerId) && isBool(raw.ready)
         ? { type: "PLAYER_READY", playerId: raw.playerId, ready: raw.ready }
         : null;
+    case "MODE_SELECTED": {
+      if (!MATCH_MODES.includes(raw.mode as MatchMode)) return null;
+      if (raw.custom !== undefined && !isCustomSettings(raw.custom)) return null;
+      return {
+        type: "MODE_SELECTED",
+        mode: raw.mode as MatchMode,
+        custom: raw.custom as CustomSettings | undefined,
+      };
+    }
     case "MATCH_CONFIGURED":
       return isMatchConfig(raw.config)
         ? { type: "MATCH_CONFIGURED", config: raw.config }

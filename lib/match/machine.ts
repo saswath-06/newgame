@@ -68,7 +68,12 @@ export function matchReducer(state: MatchState, action: MatchAction): MatchState
       if (state.phase !== "in_game" || !state.config) return state;
       if (action.outcome.round !== state.round) return state;
       const crowns = { ...state.crowns };
-      if (action.outcome.winnerRole) crowns[action.outcome.winnerRole] += 1;
+      const doublePoints = Boolean(
+        state.config.roundModifiers?.[action.outcome.round]?.includes("double_points"),
+      );
+      if (action.outcome.winnerRole) {
+        crowns[action.outcome.winnerRole] += doublePoints ? 2 : 1;
+      }
       const outcomes = [...state.outcomes, action.outcome];
       const winner =
         crowns.player1 >= state.config.targetWins

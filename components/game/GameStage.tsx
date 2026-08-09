@@ -7,6 +7,7 @@ import { soundManager } from "@/lib/sound";
 import type { RoomSession } from "@/hooks/useRoomSession";
 import type { MatchController } from "@/hooks/useMatch";
 import { maxRounds } from "@/lib/match/machine";
+import { getModifier } from "@/games/modifiers";
 
 /**
  * The immersive game area: HUD (round, crowns, connection) around the
@@ -23,6 +24,9 @@ export function GameStage({
   const roundsTotal = state.config ? maxRounds(state.config) : 0;
   const myRole = session.role ?? "player1";
   const partnerRole = myRole === "player1" ? "player2" : "player1";
+  const activeModifiers = (state.config?.roundModifiers?.[state.round] ?? [])
+    .map(getModifier)
+    .filter((m) => m !== null);
 
   return (
     <div className="flex h-dvh flex-col">
@@ -39,6 +43,15 @@ export function GameStage({
               Round {state.round + 1} of {roundsTotal}
             </p>
           </div>
+          {activeModifiers.map((mod) => (
+            <span
+              key={mod.id}
+              title={mod.description}
+              className="animate-pulse-soft rounded-full bg-peach/15 px-3 py-1 font-display text-xs font-bold text-peach"
+            >
+              {mod.icon} {mod.name}
+            </span>
+          ))}
         </div>
         <div className="flex items-center gap-5">
           <CrownRow

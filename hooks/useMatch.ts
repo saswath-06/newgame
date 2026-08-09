@@ -15,14 +15,15 @@ import {
   matchReducer,
 } from "@/lib/match/machine";
 import { resolveRound } from "@/lib/match/winner";
-import { getGame, selectGames, targetWinsForMode } from "@/games/registry";
+import { getGame, listGames, selectGames, targetWinsForMode } from "@/games/registry";
+import { assignModifiers } from "@/games/modifiers";
 import { roundSeed } from "@/lib/random";
 import { persistCompletedMatch, type PersistedMatchSummary } from "@/lib/persist";
 import { getSupabase } from "@/lib/supabase";
 import type { RoomSession } from "@/hooks/useRoomSession";
 import type { RoomEvent } from "@/types/events";
 import type { GameDefinition, GameProps, PlayerResult, RoundOutcome } from "@/types/game";
-import type { MatchMode, MatchState } from "@/types/match";
+import type { CustomSettings, MatchMode, MatchState } from "@/types/match";
 import type { PlayerRole } from "@/types/player";
 
 const COUNTDOWN_LEAD_MS = 3800;
@@ -34,6 +35,11 @@ export interface MatchController {
   myReady: boolean;
   partnerReady: boolean;
   toggleReady: () => void;
+  /** Mode currently selected for the next match (host chooses). */
+  selectedMode: MatchMode;
+  customSettings: CustomSettings;
+  /** Host-only: pick the mode (and Custom settings); syncs to the guest. */
+  selectMode: (mode: MatchMode, custom?: CustomSettings) => void;
   currentGame: GameDefinition | null;
   /** Present while phase is countdown/in_game. */
   gameProps: GameProps | null;
@@ -58,19 +64,26 @@ const noReady: ReadyFlags = { player1: false, player2: false };
  * and broadcasts them. Round winners are computed independently on both
  * sides from the exchanged GAME_RESULTs (deterministic).
  */
-export function useMatch(session: RoomSession, mode: MatchMode = "quick"): MatchController {
+export function useMatch(session: RoomSession): MatchController {
   const [state, dispatch] = useReducer(matchReducer, undefined, initialMatchState);
   const [ready, setReady] = useState<ReadyFlags>(noReady);
+  const [selectedMode, setSelectedMode] = useState<MatchMode>("quick");
+  const [customSettings, setCustomSettings] = useState<CustomSettings>(() => ({
+    targetWins: 2,
+    gameIds: listGames().map((g) => g.id),
+  }));
   const [xpSummary, setXpSummary] = useState<PersistedMatchSummary | null>(null);
   const [partnerResult, setPartnerResult] = useState<PlayerResult | null>(null);
   const [myResultIn, setMyResultIn] = useState(false);
 
   const stateRef = useRef(state);
   const readyRef = useRef(ready);
+  const modeRef = useRef(selectedMode);
   useEffect(() => {
     stateRef.current = state;
     readyRef.current = ready;
-  }, [state, ready]);
+    modeRef.current = selectedMode;
+  }, [state, ready, selectedMode]);
 
   const resultsRef = useRef(new Map<number, Partial<Record<PlayerRole, PlayerResult>>>());
   const gameEventHandlersRef = useRef(new Set<(payload: Record<string, unknown>) => void>());
@@ -101,6 +114,11 @@ export function useMatch(session: RoomSession, mode: MatchMode = "quick"): Match
           const forRole: PlayerRole =
             event.playerId === me?.id ? myRole : myRole === "player1" ? "player2" : "player1";
           setReady((prev) => ({ ...prev, [forRole]: event.ready }));
+          break;
+        }
+        case "MODE_SELECTED": {
+          setSelectedMode(event.mode);
+          if (event.custom) setCustomSettings(event.custom);
           break;
         }
         case "MATCH_CONFIGURED": {
@@ -162,12 +180,17 @@ export function useMatch(session: RoomSession, mode: MatchMode = "quick"): Match
             snapshot: {
               match: stateRef.current as unknown as Record<string, unknown>,
               ready: readyRef.current,
+              mode: modeRef.current,
             } as unknown as Record<string, unknown>,
           });
           break;
         }
         case "STATE_SNAPSHOT": {
           if (event.forPlayerId !== me?.id) return;
+          const snapMode = event.snapshot.mode;
+          if (typeof snapMode === "string") {
+            setSelectedMode(snapMode as MatchMode);
+          }
           const hydrated = hydrateFromSnapshot(event.snapshot.match);
           if (!hydrated) return;
           // An unconfigured lobby snapshot has nothing worth restoring —
@@ -248,6 +271,14 @@ export function useMatch(session: RoomSession, mode: MatchMode = "quick"): Match
     sendAndApply({ type: "PLAYER_READY", playerId: me.id, ready: next });
   }, [me, myRole, sendAndApply]);
 
+  const selectMode = useCallback(
+    (mode: MatchMode, custom?: CustomSettings) => {
+      if (!isHost) return;
+      sendAndApply({ type: "MODE_SELECTED", mode, custom });
+    },
+    [isHost, sendAndApply],
+  );
+
   // Host: both ready in lobby/match_result → configure a fresh match.
   useEffect(() => {
     if (!isHost || !me || !partner) return;
@@ -259,16 +290,27 @@ export function useMatch(session: RoomSession, mode: MatchMode = "quick"): Match
     configuredForRef.current = configKey;
 
     const seed = (crypto.getRandomValues(new Uint32Array(1))[0] ?? Date.now()) >>> 0;
+    const mode = selectedMode;
+    const targetWins =
+      mode === "custom" ? customSettings.targetWins : targetWinsForMode(mode);
+    const games = selectGames(
+      mode,
+      seed,
+      false,
+      customSettings.gameIds,
+      customSettings.targetWins,
+    );
     sendAndApply({
       type: "MATCH_CONFIGURED",
       config: {
         mode,
-        targetWins: targetWinsForMode(mode),
+        targetWins,
         seed,
-        games: selectGames(mode, seed, false),
+        games,
+        roundModifiers: assignModifiers(mode, seed, games),
       },
     });
-  }, [isHost, me, partner, mode, ready, state, sendAndApply]);
+  }, [isHost, me, partner, selectedMode, customSettings, ready, state, sendAndApply]);
 
   // Host: a freshly configured match kicks off round 0 after a beat.
   const kickoffDoneRef = useRef<number | null>(null);
@@ -388,6 +430,7 @@ export function useMatch(session: RoomSession, mode: MatchMode = "quick"): Match
       playerName: me.name,
       partnerName: partner?.name ?? "Partner",
       startAt: state.startAt,
+      modifiers: state.config.roundModifiers?.[round] ?? [],
       now,
       sendGameEvent: (payload) =>
         send({ type: "GAME_EVENT", playerId: me.id, round, payload }),
@@ -407,6 +450,9 @@ export function useMatch(session: RoomSession, mode: MatchMode = "quick"): Match
     myReady: myRole ? ready[myRole] : false,
     partnerReady: myRole ? ready[myRole === "player1" ? "player2" : "player1"] : false,
     toggleReady,
+    selectedMode,
+    customSettings,
+    selectMode,
     currentGame,
     gameProps,
     lastOutcome: state.outcomes[state.outcomes.length - 1] ?? null,

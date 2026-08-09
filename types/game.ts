@@ -31,6 +31,8 @@ export interface GameProps {
   partnerName: string;
   /** Offset-corrected epoch ms at which gameplay begins. */
   startAt: number;
+  /** Active Chaos modifier ids for this round (usually empty). */
+  modifiers: string[];
   /** Synced clock (host-aligned epoch ms). */
   now: () => number;
   /** Broadcast a low-frequency in-game event to the partner. */

@@ -5,35 +5,28 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { ConnectionDot } from "@/components/lobby/ConnectionDot";
 import { soundManager } from "@/lib/sound";
+import { listGames } from "@/games/registry";
 import type { RoomSession } from "@/hooks/useRoomSession";
 import type { MatchController } from "@/hooks/useMatch";
+import type { MatchMode } from "@/types/match";
 
-const MODES = [
-  {
-    id: "quick",
-    name: "Quick Match",
-    detail: "Best of 3 · random games",
-    available: true,
-  },
+const MODES: { id: MatchMode; name: string; detail: string }[] = [
+  { id: "quick", name: "Quick Match", detail: "Best of 3 · random games" },
   {
     id: "date_night",
     name: "Date Night",
-    detail: "Best of 7 · arcade + physical",
-    available: false,
+    detail: "Best of 7 · balanced mix",
   },
-  {
-    id: "chaos",
-    name: "Chaos Mode",
-    detail: "Best of 9 · with modifiers",
-    available: false,
-  },
-  {
-    id: "custom",
-    name: "Custom",
-    detail: "Pick rounds & games",
-    available: false,
-  },
-] as const;
+  { id: "chaos", name: "Chaos Mode", detail: "Best of 9 · wild modifiers" },
+  { id: "custom", name: "Custom", detail: "Pick rounds & games" },
+];
+
+const CUSTOM_LENGTHS = [
+  { targetWins: 1, label: "Best of 1" },
+  { targetWins: 2, label: "Best of 3" },
+  { targetWins: 3, label: "Best of 5" },
+  { targetWins: 4, label: "Best of 7" },
+];
 
 export function Lobby({
   session,
@@ -129,27 +122,46 @@ export function Lobby({
       )}
 
       <section className="mt-10 w-full">
-        <p className="text-sm font-medium text-muted">Match type</p>
+        <p className="text-sm font-medium text-muted">
+          Match type
+          {!session.isHost && (
+            <span className="ml-2 text-xs text-muted/70">
+              ({session.partner?.name ?? "The host"} picks)
+            </span>
+          )}
+        </p>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {MODES.map((mode) => (
-            <div
-              key={mode.id}
-              className={`glass rounded-2xl p-4 ${
-                mode.available
-                  ? "border-rose/40 shadow-[0_0_24px_rgba(255,77,125,0.12)]"
-                  : "opacity-45"
-              }`}
-            >
-              <p className="font-display text-sm font-bold text-ink">{mode.name}</p>
-              <p className="mt-1 text-xs text-muted">{mode.detail}</p>
-              {!mode.available && (
-                <p className="mt-2 inline-block rounded-full bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted">
-                  Coming soon
-                </p>
-              )}
-            </div>
-          ))}
+          {MODES.map((mode) => {
+            const selected = match.selectedMode === mode.id;
+            return (
+              <button
+                key={mode.id}
+                disabled={!session.isHost}
+                onClick={() => {
+                  soundManager.play("click");
+                  match.selectMode(mode.id);
+                }}
+                className={`glass rounded-2xl p-4 text-left transition-all ${
+                  selected
+                    ? "border-rose/50 shadow-[0_0_24px_rgba(255,77,125,0.15)]"
+                    : "opacity-60"
+                } ${session.isHost ? "cursor-pointer hover:opacity-100" : "cursor-default"}`}
+              >
+                <p className="font-display text-sm font-bold text-ink">{mode.name}</p>
+                <p className="mt-1 text-xs text-muted">{mode.detail}</p>
+                {selected && (
+                  <p className="mt-2 inline-block rounded-full bg-rose/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-rose-soft">
+                    Selected
+                  </p>
+                )}
+              </button>
+            );
+          })}
         </div>
+
+        {match.selectedMode === "custom" && (
+          <CustomPanel match={match} isHost={session.isHost} />
+        )}
       </section>
 
       <div className="mt-10 flex flex-col items-center gap-3">
@@ -179,6 +191,78 @@ export function Lobby({
         </p>
       </div>
     </div>
+  );
+}
+
+function CustomPanel({
+  match,
+  isHost,
+}: {
+  match: MatchController;
+  isHost: boolean;
+}) {
+  const { customSettings } = match;
+  const games = listGames();
+
+  const update = (partial: Partial<typeof customSettings>) => {
+    match.selectMode("custom", { ...customSettings, ...partial });
+  };
+
+  const toggleGame = (id: string) => {
+    const has = customSettings.gameIds.includes(id);
+    const next = has
+      ? customSettings.gameIds.filter((g) => g !== id)
+      : [...customSettings.gameIds, id];
+    if (next.length === 0) return; // at least one game stays selected
+    update({ gameIds: next });
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="glass mt-3 rounded-2xl p-4"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted">Length</span>
+        {CUSTOM_LENGTHS.map((len) => (
+          <button
+            key={len.targetWins}
+            disabled={!isHost}
+            onClick={() => update({ targetWins: len.targetWins })}
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+              customSettings.targetWins === len.targetWins
+                ? "bg-rose/20 text-rose-soft"
+                : "bg-white/5 text-muted"
+            } ${isHost ? "cursor-pointer hover:text-ink" : "cursor-default"}`}
+          >
+            {len.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted">Games</span>
+        {games.map((game) => {
+          const on = customSettings.gameIds.includes(game.id);
+          return (
+            <button
+              key={game.id}
+              disabled={!isHost}
+              onClick={() => toggleGame(game.id)}
+              title={game.description}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                on ? "bg-violet/20 text-violet-soft" : "bg-white/5 text-muted/60"
+              } ${isHost ? "cursor-pointer hover:text-ink" : "cursor-default"}`}
+            >
+              {game.icon} {game.name}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-[11px] text-muted/70">
+        Physical (camera) games join the pool once camera support ships.
+      </p>
+    </motion.div>
   );
 }
 

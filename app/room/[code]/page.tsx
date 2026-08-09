@@ -22,7 +22,7 @@ export default function RoomPage({
   const normalizedCode = code.toUpperCase();
   const { identity, claimIdentity, prefillName } = usePlayerIdentity();
   const session = useRoomSession(normalizedCode, identity);
-  const match = useMatch(session, "quick");
+  const match = useMatch(session);
   const [draftName, setDraftName] = useState("");
 
   if (!identity) {

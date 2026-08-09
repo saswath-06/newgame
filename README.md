@@ -4,12 +4,37 @@ A private online arcade for two. Long-distance couples join the same room with a
 6-character code, ready up, and compete in short synchronized minigames —
 crowns for the winner, shared Couple XP for both.
 
-**Current status:** the foundation vertical slice is playable end-to-end:
+**Current status:** the full arcade loop is playable end-to-end:
 
 ```
-Landing → Create/Join room → Lobby → Ready up → synchronized Quickdraw
+Landing → Create/Join room → Lobby → Ready up → synchronized minigames
 → Round results → Match results (best of 3) → Rematch
 ```
+
+**Six arcade games** are live: ⚡ Quickdraw, 🧠 Memory Blitz, 🎨 Color Clash,
+🟣 Sequence Showdown, 🌀 Maze Race, and 💗 Heart Pong (host-authoritative
+realtime pong).
+
+**All four match modes** work. The host picks in the lobby and the choice
+syncs to both players:
+
+| Mode | Length | Behavior |
+|---|---|---|
+| Quick Match | Best of 3 | Random games each round |
+| Date Night | Best of 7 | Balances arcade/physical categories (falls back to arcade until camera games ship) |
+| Chaos Mode | Best of 9 | Rounds can carry a modifier — see below |
+| Custom | Best of 1–7 | Host picks the length and which games are in the pool |
+
+### Chaos modifiers
+
+Roughly half of Chaos rounds draw one modifier, assigned deterministically
+from the match seed so both clients agree. Add new ones in
+`games/modifiers.ts`; each declares which games it applies to.
+
+- **✨ Double Points** — the round's crown counts twice (applied by the match machine, works with every game)
+- **⏱️ Hyper Speed** — much tighter answer window (Quickdraw, Color Clash)
+- **🤏 Tiny Paddles** — paddles shrink to 55% (Heart Pong)
+- **🪞 Mirrored Controls** — every direction inverts (Maze Race)
 
 Persistent stats (matches, rounds, Couple XP, rivalry streak) are written to
 Supabase after every match.
@@ -172,8 +197,12 @@ travel peer-to-peer over WebRTC.
 
 ## Known limitations
 
-- Only **Quick Match** (best of 3) and one game (Quickdraw) exist; other modes
-  are visible but marked "coming soon".
+- Date Night's category balancing has nothing to balance yet — all six games
+  are arcade, so it currently behaves like a longer Quick Match.
+- Only the host picks the match mode; the guest sees the selection but
+  can't change it.
+- Heart Pong's guest paddle rides on broadcast latency (~100–300 ms) — fine
+  for casual play, noticeable on slow connections.
 - RLS is intentionally permissive (guest flow, anon key). Fine for a private
   couples game; tighten when Supabase Auth lands.
 - If **both** players close their tabs mid-match, the match state is gone
@@ -186,6 +215,7 @@ travel peer-to-peer over WebRTC.
 
 ## Roadmap
 
-Phase 3: Memory Blitz, Color Clash, Sequence Showdown, Maze Race, Heart Pong →
-Phase 4: MediaPipe vision foundation → Phase 5: six physical games →
-Phase 6: WebRTC video call → Phase 7: stakes, cosmetics, richer stats & titles.
+Phase 4: MediaPipe vision foundation → Phase 5: six physical games
+(Pose Perfect, Freeze, Balance Battle, Hand Sign Sprint, Mirror Me, Move Sync)
+→ Phase 6: WebRTC video call → Phase 7: stakes, cosmetics, richer stats
+and dynamic titles.
