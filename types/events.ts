@@ -13,6 +13,10 @@ export type RoomEvent =
   | { type: "PLAYER_JOINED"; playerId: string; name: string; role: PlayerRole }
   | { type: "PLAYER_READY"; playerId: string; ready: boolean }
   | { type: "MODE_SELECTED"; mode: MatchMode; custom?: CustomSettings }
+  | { type: "CAMERA_STATUS"; playerId: string; hasCamera: boolean }
+  /** Ask the partner to skip an unplayable camera round. */
+  | { type: "SKIP_REQUESTED"; playerId: string; reason: string }
+  | { type: "SKIP_AGREED"; playerId: string; round: number }
   | { type: "MATCH_CONFIGURED"; config: MatchConfig }
   | { type: "COUNTDOWN_STARTED"; startAt: number; round: number }
   | {
@@ -114,6 +118,18 @@ export function parseRoomEvent(raw: unknown): RoomEvent | null {
         custom: raw.custom as CustomSettings | undefined,
       };
     }
+    case "CAMERA_STATUS":
+      return isStr(raw.playerId) && isBool(raw.hasCamera)
+        ? { type: "CAMERA_STATUS", playerId: raw.playerId, hasCamera: raw.hasCamera }
+        : null;
+    case "SKIP_REQUESTED":
+      return isStr(raw.playerId) && isStr(raw.reason)
+        ? { type: "SKIP_REQUESTED", playerId: raw.playerId, reason: raw.reason }
+        : null;
+    case "SKIP_AGREED":
+      return isStr(raw.playerId) && isNum(raw.round)
+        ? { type: "SKIP_AGREED", playerId: raw.playerId, round: raw.round }
+        : null;
     case "MATCH_CONFIGURED":
       return isMatchConfig(raw.config)
         ? { type: "MATCH_CONFIGURED", config: raw.config }

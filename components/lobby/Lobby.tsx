@@ -162,6 +162,18 @@ export function Lobby({
         {match.selectedMode === "custom" && (
           <CustomPanel match={match} isHost={session.isHost} />
         )}
+
+        {bothPresent && !match.camerasAvailable && (
+          <p className="mt-3 text-xs text-muted">
+            📷 Camera games are sitting this one out —{" "}
+            {!match.myCamera && !match.partnerCamera
+              ? "neither device has a camera."
+              : !match.myCamera
+                ? "no camera on your device."
+                : `no camera on ${partner?.name ?? "your partner"}'s device.`}{" "}
+            Only arcade games will be picked.
+          </p>
+        )}
       </section>
 
       <div className="mt-10 flex flex-col items-center gap-3">

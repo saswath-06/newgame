@@ -13,7 +13,16 @@ Landing → Create/Join room → Lobby → Ready up → synchronized minigames
 
 **Six arcade games** are live: ⚡ Quickdraw, 🧠 Memory Blitz, 🎨 Color Clash,
 🟣 Sequence Showdown, 🌀 Maze Race, and 💗 Heart Pong (host-authoritative
-realtime pong).
+realtime pong), plus the first **camera game**, 🤸 Pose Perfect.
+
+### Devices without a camera
+
+Camera games are kept out of match selection **entirely** unless *both*
+players have a webcam — detected with `enumerateDevices`, which needs no
+permission prompt, and exchanged over a `CAMERA_STATUS` event. The lobby says
+why when they're unavailable. If a camera fails mid-match, the affected player
+can ask their partner to skip that round; once both agree, the round resolves
+as a draw and the match continues.
 
 **All four match modes** work. The host picks in the lobby and the choice
 syncs to both players:
@@ -97,6 +106,9 @@ games/registry.ts        GameDefinition registry + mode-based selection
 games/quickdraw/         logic.ts (pure, tested) + QuickdrawGame.tsx (rendering)
 hooks/useRoomSession.ts  Join/rejoin, realtime channel, presence, clock sync
 hooks/useMatch.ts        Match controller: reducer + host duties + results
+hooks/useVision.ts       Camera + MediaPipe lifecycle; landmarks land in a ref
+lib/vision/              Pose/gesture math, engine wrapper, camera manager
+components/vision/       Camera feed with skeleton overlay, calibration screen
 lib/realtime/            Typed channel wrapper, ping/pong clock sync
 lib/match/               Pure state machine, winner resolution, highlights
 lib/random.ts            Seeded RNG (xmur3 + mulberry32), room codes
@@ -128,6 +140,49 @@ tests/unit, tests/e2e    Vitest + Playwright
   same id resumes the seat. The rejoiner requests a `STATE_SNAPSHOT` from the
   partner and hydrates the reducer. A mid-round rejoiner concedes that round
   (incomplete result) rather than desyncing.
+
+### How pose scoring works
+
+Everything runs **on-device** via MediaPipe Tasks Vision (WebAssembly). Camera
+frames are never uploaded, nothing is recorded, and landmark streams are
+discarded when a game ends.
+
+- `lib/vision/camera.ts` owns a **single refcounted MediaStream**, so MediaPipe
+  and (later) the WebRTC call share one camera instead of competing for it.
+- `lib/vision/engine.ts` wraps the Pose and Hand landmarkers, tries the **GPU
+  delegate and falls back to CPU**, and runs detection on `requestAnimationFrame`.
+  The WASM runtime is served from `public/mediapipe/` — copied out of
+  `node_modules` by `scripts/copy-mediapipe-wasm.mjs` before dev/build, so it
+  always matches the installed version and works offline.
+- `useVision` writes smoothed landmarks into a **ref, not state**, so games can
+  sample at 60fps without re-rendering React each frame.
+- Scoring compares **joint angles and relative geometry, never raw pixels**.
+  `normalizePose` recenters on the body and divides by torso length, so camera
+  distance, height, and position in frame don't affect the score. Landmarks
+  below 0.5 visibility are ignored rather than penalized.
+- `comparePoses` blends a weighted joint average with the **worst single joint**,
+  so a pose that gets the "free" joints right (straight legs, straight elbows)
+  but holds the arms completely wrong can't score well.
+- `mirrorAngles` swaps left/right and flips lean, which is what makes Mirror Me
+  scoreable.
+- Gestures (`lib/vision/gestures.ts`) are pure geometry — a finger is extended
+  when its tip is farther from the wrist than its middle joint, scaled by hand
+  size. `GestureStabilizer` requires several consecutive confident frames so a
+  hand passing through a shape doesn't count.
+
+- Thresholds for "did they move?" and "are they wobbling?" are **self-calibrating**
+  (`lib/vision/calibration.ts`). A cheap webcam in dim light jitters several times
+  more than a good sensor, so a number measured on one machine doesn't transfer.
+  Each player samples their own noise floor while holding still, and thresholds
+  derive from that — clamped so neither a suspiciously quiet nor a very noisy
+  camera makes a game impossible or trivial.
+
+Every algorithm takes plain landmark arrays, so the unit tests build synthetic
+bodies and hands (`tests/unit/vision-fixtures.ts`) and never touch MediaPipe.
+
+**Debug it live:** `npm run dev`, then visit **/dev/vision** for a skeleton
+overlay, live joint angles vs. a target template, motion/sway readouts, and
+gesture detection. Development builds only.
 
 ### Scoring
 
@@ -174,8 +229,8 @@ export const coinflipDefinition: GameDefinition = {
 npm test                 # Vitest unit tests (RNG, machine, quickdraw, events)
 npm run typecheck        # tsc --noEmit
 npx eslint .             # lint
-npx playwright test      # two-context e2e (needs .env.local + first run:
-                         #   npx playwright install chromium)
+npx playwright test      # two-context e2e + vision smoke test (needs
+                         # .env.local; first run: npx playwright install chromium)
 ```
 
 Deterministic logic (seeded RNG, match transitions, winner resolution,
@@ -189,11 +244,12 @@ Any Next.js host works (Vercel is simplest): set the two `NEXT_PUBLIC_SUPABASE_*
 env vars, apply the migration to the production Supabase project, deploy.
 No server-side secrets exist yet — the anon key is public by design.
 
-## Privacy (for upcoming camera phases)
+## Privacy
 
-Planned computer-vision games run MediaPipe **entirely in the browser**;
-camera frames are never uploaded for scoring, and peer video (when added) will
-travel peer-to-peer over WebRTC.
+Pose and hand detection run MediaPipe **entirely in your browser**. Camera
+frames are never uploaded for scoring, nothing is recorded, and landmark data
+is discarded when a game ends. Peer video (Phase 6) will travel peer-to-peer
+over WebRTC.
 
 ## Known limitations
 
@@ -215,7 +271,12 @@ travel peer-to-peer over WebRTC.
 
 ## Roadmap
 
-Phase 4: MediaPipe vision foundation → Phase 5: six physical games
-(Pose Perfect, Freeze, Balance Battle, Hand Sign Sprint, Mirror Me, Move Sync)
-→ Phase 6: WebRTC video call → Phase 7: stakes, cosmetics, richer stats
-and dynamic titles.
+Phase 4 (vision foundation) is **done**. Phase 5 is **in progress** — Pose
+Perfect is playable; Freeze, Balance Battle, Hand Sign Sprint, Mirror Me and
+Move Sync are next. Then Phase 6: WebRTC video call → Phase 7: stakes,
+cosmetics, richer stats and dynamic titles.
+
+The camera games' detection heuristics have been validated against synthetic
+landmark data, but **not yet tuned against a real body on a real webcam** —
+expect the similarity and movement thresholds to need a pass once someone
+plays them for real. `/dev/vision` exists for exactly that.

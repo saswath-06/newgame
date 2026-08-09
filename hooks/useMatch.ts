@@ -20,6 +20,7 @@ import { assignModifiers } from "@/games/modifiers";
 import { roundSeed } from "@/lib/random";
 import { persistCompletedMatch, type PersistedMatchSummary } from "@/lib/persist";
 import { getSupabase } from "@/lib/supabase";
+import { hasCamera } from "@/lib/vision/camera";
 import type { RoomSession } from "@/hooks/useRoomSession";
 import type { RoomEvent } from "@/types/events";
 import type { GameDefinition, GameProps, PlayerResult, RoundOutcome } from "@/types/game";
@@ -35,6 +36,14 @@ export interface MatchController {
   myReady: boolean;
   partnerReady: boolean;
   toggleReady: () => void;
+  /** True only when BOTH players have a camera — gates physical games. */
+  camerasAvailable: boolean;
+  myCamera: boolean;
+  partnerCamera: boolean;
+  /** Ask the partner to skip an unplayable camera round. */
+  requestSkip: (reason: string) => void;
+  skipRequest: { byMe: boolean; reason: string } | null;
+  agreeToSkip: () => void;
   /** Mode currently selected for the next match (host chooses). */
   selectedMode: MatchMode;
   customSettings: CustomSettings;
@@ -72,6 +81,12 @@ export function useMatch(session: RoomSession): MatchController {
     targetWins: 2,
     gameIds: listGames().map((g) => g.id),
   }));
+  const [myCamera, setMyCamera] = useState(false);
+  const [partnerCamera, setPartnerCamera] = useState(false);
+  const [skipRequest, setSkipRequest] = useState<{
+    byMe: boolean;
+    reason: string;
+  } | null>(null);
   const [xpSummary, setXpSummary] = useState<PersistedMatchSummary | null>(null);
   const [partnerResult, setPartnerResult] = useState<PlayerResult | null>(null);
   const [myResultIn, setMyResultIn] = useState(false);
@@ -119,6 +134,42 @@ export function useMatch(session: RoomSession): MatchController {
         case "MODE_SELECTED": {
           setSelectedMode(event.mode);
           if (event.custom) setCustomSettings(event.custom);
+          break;
+        }
+        case "CAMERA_STATUS": {
+          if (event.playerId === me?.id) setMyCamera(event.hasCamera);
+          else setPartnerCamera(event.hasCamera);
+          break;
+        }
+        case "SKIP_REQUESTED": {
+          if (event.playerId === me?.id) return;
+          setSkipRequest({ byMe: false, reason: event.reason });
+          break;
+        }
+        case "SKIP_AGREED": {
+          if (event.playerId === me?.id) return;
+          // Both sides agreed: report an incomplete result so the round
+          // resolves as a draw and the match moves on.
+          if (!myRole || !me) return;
+          const entry = resultsRef.current.get(event.round) ?? {};
+          if (entry[myRole]) return;
+          const skipped: PlayerResult = {
+            rawScore: 0,
+            normalizedScore: 0,
+            completed: false,
+            detail: { skipped: true },
+          };
+          entry[myRole] = skipped;
+          resultsRef.current.set(event.round, entry);
+          setMyResultIn(true);
+          setSkipRequest(null);
+          send({
+            type: "GAME_RESULT",
+            playerId: me.id,
+            round: event.round,
+            result: skipped,
+          });
+          tryResolveRound(event.round);
           break;
         }
         case "MATCH_CONFIGURED": {
@@ -279,6 +330,57 @@ export function useMatch(session: RoomSession): MatchController {
     [isHost, sendAndApply],
   );
 
+  // Announce whether this device has a camera, so the host can keep
+  // physical games out of selection when either player lacks one.
+  useEffect(() => {
+    if (session.status !== "ready" || !me) return;
+    let cancelled = false;
+    void hasCamera().then((available) => {
+      if (!cancelled) {
+        sendAndApply({ type: "CAMERA_STATUS", playerId: me.id, hasCamera: available });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session.status, me, sendAndApply]);
+
+  // Re-announce to a partner who joins (or rejoins) after we did.
+  useEffect(() => {
+    if (!session.partnerOnline || !me || !myCamera) return;
+    send({ type: "CAMERA_STATUS", playerId: me.id, hasCamera: myCamera });
+  }, [session.partnerOnline, me, myCamera, send]);
+
+  const requestSkip = useCallback(
+    (reason: string) => {
+      if (!me) return;
+      setSkipRequest({ byMe: true, reason });
+      send({ type: "SKIP_REQUESTED", playerId: me.id, reason });
+    },
+    [me, send],
+  );
+
+  const agreeToSkip = useCallback(() => {
+    if (!me || !myRole) return;
+    const round = stateRef.current.round;
+    const skipped: PlayerResult = {
+      rawScore: 0,
+      normalizedScore: 0,
+      completed: false,
+      detail: { skipped: true },
+    };
+    const entry = resultsRef.current.get(round) ?? {};
+    if (!entry[myRole]) {
+      entry[myRole] = skipped;
+      resultsRef.current.set(round, entry);
+      setMyResultIn(true);
+      send({ type: "GAME_RESULT", playerId: me.id, round, result: skipped });
+    }
+    send({ type: "SKIP_AGREED", playerId: me.id, round });
+    setSkipRequest(null);
+    tryResolveRound(round);
+  }, [me, myRole, send, tryResolveRound]);
+
   // Host: both ready in lobby/match_result → configure a fresh match.
   useEffect(() => {
     if (!isHost || !me || !partner) return;
@@ -296,7 +398,7 @@ export function useMatch(session: RoomSession): MatchController {
     const games = selectGames(
       mode,
       seed,
-      false,
+      myCamera && partnerCamera,
       customSettings.gameIds,
       customSettings.targetWins,
     );
@@ -310,7 +412,18 @@ export function useMatch(session: RoomSession): MatchController {
         roundModifiers: assignModifiers(mode, seed, games),
       },
     });
-  }, [isHost, me, partner, selectedMode, customSettings, ready, state, sendAndApply]);
+  }, [
+    isHost,
+    me,
+    partner,
+    selectedMode,
+    customSettings,
+    ready,
+    state,
+    sendAndApply,
+    myCamera,
+    partnerCamera,
+  ]);
 
   // Host: a freshly configured match kicks off round 0 after a beat.
   const kickoffDoneRef = useRef<number | null>(null);
@@ -442,8 +555,24 @@ export function useMatch(session: RoomSession): MatchController {
       },
       onFinish: (result) => submitResult(round, result),
       partnerResult,
+      requestSkip,
+      skipPending: skipRequest?.byMe ?? false,
     };
-  }, [state.config, state.phase, state.round, state.startAt, me, myRole, partner, now, send, submitResult, partnerResult]);
+  }, [
+    state.config,
+    state.phase,
+    state.round,
+    state.startAt,
+    me,
+    myRole,
+    partner,
+    now,
+    send,
+    submitResult,
+    partnerResult,
+    requestSkip,
+    skipRequest,
+  ]);
 
   return {
     state,
@@ -453,6 +582,12 @@ export function useMatch(session: RoomSession): MatchController {
     selectedMode,
     customSettings,
     selectMode,
+    camerasAvailable: myCamera && partnerCamera,
+    myCamera,
+    partnerCamera,
+    requestSkip,
+    skipRequest,
+    agreeToSkip,
     currentGame,
     gameProps,
     lastOutcome: state.outcomes[state.outcomes.length - 1] ?? null,

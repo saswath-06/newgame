@@ -45,6 +45,10 @@ export interface GameProps {
   onFinish: (result: PlayerResult) => void;
   /** Partner's live result, if it arrived before ours (for spectating UI). */
   partnerResult: PlayerResult | null;
+  /** Ask the partner to skip this round (camera games that can't run). */
+  requestSkip: (reason: string) => void;
+  /** True while a skip request awaits the partner's agreement. */
+  skipPending: boolean;
 }
 
 export interface GameDefinition {

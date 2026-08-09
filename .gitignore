@@ -43,3 +43,6 @@ next-env.d.ts
 # playwright
 /test-results/
 /playwright-report/
+
+# generated: copied from node_modules by scripts/copy-mediapipe-wasm.mjs
+/public/mediapipe/

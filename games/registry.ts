@@ -7,6 +7,7 @@ import { colorClashDefinition } from "@/games/color-clash";
 import { sequenceShowdownDefinition } from "@/games/sequence-showdown";
 import { mazeRaceDefinition } from "@/games/maze-race";
 import { heartPongDefinition } from "@/games/heart-pong";
+import { posePerfectDefinition } from "@/games/pose-perfect";
 
 /**
  * Central game registry. Adding a game = implement GameDefinition in
@@ -20,6 +21,7 @@ const GAMES: GameDefinition[] = [
   sequenceShowdownDefinition,
   mazeRaceDefinition,
   heartPongDefinition,
+  posePerfectDefinition,
 ];
 
 export function getGame(id: string): GameDefinition | null {

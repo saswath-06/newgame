@@ -76,6 +76,20 @@ export function GameStage({
             Waiting for your partner to reconnect…
           </div>
         )}
+        {match.skipRequest && !match.skipRequest.byMe && (
+          <div className="absolute inset-x-0 bottom-4 mx-auto flex w-fit items-center gap-3 rounded-2xl bg-raised/95 px-4 py-3 text-sm shadow-xl">
+            <span className="text-muted">
+              {session.partner?.name ?? "Your partner"} can&apos;t play this one:{" "}
+              <span className="text-ink">{match.skipRequest.reason}</span>
+            </span>
+            <button
+              onClick={match.agreeToSkip}
+              className="cursor-pointer rounded-full bg-gradient-to-r from-rose to-violet px-4 py-1.5 font-display text-xs font-bold text-ink"
+            >
+              Skip this game
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
