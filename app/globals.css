@@ -1,26 +1,101 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-bg: #0a0e1e;
+  --color-raised: #131936;
+  --color-edge: #232b52;
+  --color-ink: #eef1ff;
+  --color-muted: #8b93b8;
+  --color-rose: #ff4d7d;
+  --color-rose-soft: #ff7da1;
+  --color-violet: #8b5cf6;
+  --color-violet-soft: #ab8bfa;
+  --color-peach: #ffb86b;
+  --color-go: #4ade9c;
+  --color-danger: #ff5c5c;
+  --font-display: var(--font-unbounded), system-ui, sans-serif;
+  --font-body: var(--font-sora), system-ui, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  min-height: 100dvh;
+  /* Ambient duo glow: rose from the left, violet from the right. */
+  background-image:
+    radial-gradient(90rem 50rem at -10% -20%, rgba(255, 77, 125, 0.08), transparent 60%),
+    radial-gradient(90rem 50rem at 110% 120%, rgba(139, 92, 246, 0.1), transparent 60%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(255, 77, 125, 0.35);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-rose-soft);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Sparse glass surface — cards that sit above the ambient glow. */
+.glass {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.text-gradient-duo {
+  background: linear-gradient(92deg, var(--color-rose) 10%, var(--color-violet) 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.glow-rose {
+  text-shadow: 0 0 28px rgba(255, 77, 125, 0.45);
+}
+
+.glow-violet {
+  text-shadow: 0 0 28px rgba(139, 92, 246, 0.5);
+}
+
+/* The versus spine: a vertical seam where the two player colors meet. */
+.vs-spine {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(255, 77, 125, 0.5) 30%,
+    rgba(139, 92, 246, 0.5) 70%,
+    transparent
+  );
+  width: 1px;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-soft {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
 }

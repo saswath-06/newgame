@@ -15,7 +15,9 @@ export type MatchAction =
   | { type: "GAME_STARTED" }
   | { type: "ROUND_COMPLETE"; outcome: RoundOutcome }
   | { type: "SHOW_MATCH_RESULT" }
-  | { type: "RESET" };
+  | { type: "RESET" }
+  /** Adopt a peer snapshot after reconnecting (already validated). */
+  | { type: "HYDRATE"; state: MatchState };
 
 export function initialMatchState(): MatchState {
   return {
@@ -36,7 +38,8 @@ export function maxRounds(config: MatchConfig): number {
 export function matchReducer(state: MatchState, action: MatchAction): MatchState {
   switch (action.type) {
     case "CONFIGURE": {
-      if (state.phase !== "lobby") return state;
+      // match_result → CONFIGURE is the rematch path: fresh match, same room.
+      if (state.phase !== "lobby" && state.phase !== "match_result") return state;
       return { ...initialMatchState(), config: action.config };
     }
 
@@ -101,6 +104,9 @@ export function matchReducer(state: MatchState, action: MatchAction): MatchState
     case "RESET":
       return initialMatchState();
 
+    case "HYDRATE":
+      return action.state;
+
     default:
       return state;
   }
@@ -112,4 +118,43 @@ export function isMatchOver(state: MatchState): boolean {
   return (
     state.matchWinner !== null || state.outcomes.length >= maxRounds(state.config)
   );
+}
+
+const PHASES: readonly MatchState["phase"][] = [
+  "lobby",
+  "countdown",
+  "in_game",
+  "round_result",
+  "match_result",
+];
+
+/**
+ * Rebuild MatchState from a peer's STATE_SNAPSHOT after a reconnect.
+ * Loose shape validation — a malformed snapshot yields null and the
+ * rejoiner stays in the lobby rather than crashing.
+ */
+export function hydrateFromSnapshot(raw: unknown): MatchState | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const s = raw as Partial<MatchState>;
+  if (!PHASES.includes(s.phase as MatchState["phase"])) return null;
+  if (typeof s.round !== "number" || !Array.isArray(s.outcomes)) return null;
+  if (
+    typeof s.crowns !== "object" ||
+    s.crowns === null ||
+    typeof s.crowns.player1 !== "number" ||
+    typeof s.crowns.player2 !== "number"
+  )
+    return null;
+  return {
+    phase: s.phase as MatchState["phase"],
+    config: s.config ?? null,
+    round: s.round,
+    crowns: { player1: s.crowns.player1, player2: s.crowns.player2 },
+    outcomes: s.outcomes,
+    startAt: typeof s.startAt === "number" ? s.startAt : null,
+    matchWinner:
+      s.matchWinner === "player1" || s.matchWinner === "player2"
+        ? s.matchWinner
+        : null,
+  };
 }

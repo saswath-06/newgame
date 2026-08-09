@@ -25,6 +25,12 @@ export type RoomEvent =
       result: PlayerResult;
     }
   | { type: "LEAVE_ROOM"; playerId: string }
+  | {
+      type: "MATCH_PERSISTED";
+      coupleXpEarned: number;
+      coupleXpTotal: number | null;
+      totalMatches: number | null;
+    }
   | { type: "STATE_REQUEST"; playerId: string }
   | {
       type: "STATE_SNAPSHOT";
@@ -110,6 +116,15 @@ export function parseRoomEvent(raw: unknown): RoomEvent | null {
         : null;
     case "LEAVE_ROOM":
       return isStr(raw.playerId) ? { type: "LEAVE_ROOM", playerId: raw.playerId } : null;
+    case "MATCH_PERSISTED":
+      return isNum(raw.coupleXpEarned)
+        ? {
+            type: "MATCH_PERSISTED",
+            coupleXpEarned: raw.coupleXpEarned,
+            coupleXpTotal: isNum(raw.coupleXpTotal) ? raw.coupleXpTotal : null,
+            totalMatches: isNum(raw.totalMatches) ? raw.totalMatches : null,
+          }
+        : null;
     case "STATE_REQUEST":
       return isStr(raw.playerId)
         ? { type: "STATE_REQUEST", playerId: raw.playerId }
